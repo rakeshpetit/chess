@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Control</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>♟️ Chess Control</h1>
+            <p class="subtitle">Block or allow chess sites instantly</p>
+        </header>
+
+        <main>
+            <div class="status-card">
+                <h2>Current Status</h2>
+                <div id="status-display" class="status-display">
+                    <span class="status-indicator"></span>
+                    <span id="status-text">No action taken yet</span>
+                </div>
+                <p id="status-time" class="status-time"></p>
+            </div>
+
+            <div class="controls">
+                <button id="block-btn" class="btn btn-block" onclick="blockChess()">
+                    <span class="btn-icon">🚫</span>
+                    <span class="btn-text">Block Chess</span>
+                </button>
+                <button id="allow-btn" class="btn btn-allow" onclick="allowChess()">
+                    <span class="btn-icon">✅</span>
+                    <span class="btn-text">Allow Chess</span>
+                </button>
+            </div>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p id="loading-text">Processing...</p>
+            </div>
+
+            <div id="message" class="message hidden"></div>
+        </main>
+
+        <footer>
+            <p>Runs on local network • Controls remote hosts file</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

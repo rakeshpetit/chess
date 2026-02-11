@@ -1,0 +1,37 @@
+{
+  "name": "chess-control",
+  "version": "1.0.0",
+  "description": "Remote chess site blocking/unblocking with ntfy integration",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node lichess/index.js",
+    "monitor": "node lichess/monitor.js",
+    "suspend": "node suspend-chess.js",
+    "ntfy-subscriber": "node ntfy/ntfy-subscriber.js",
+    "ntfy-listener": "node ntfy/ntfy-listener.js",
+    "test": "node ntfy/test-ntfy.js",
+    "webapp": "node chess-control-webapp/server.js"
+  },
+  "keywords": [
+    "chess",
+    "monitoring",
+    "ntfy",
+    "remote-control",
+    "productivity",
+    "webapp"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.4",
+    "express": "^4.18.2",
+    "ssh2": "^1.15.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
