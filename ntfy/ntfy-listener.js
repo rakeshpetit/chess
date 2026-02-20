@@ -1,5 +1,6 @@
 import express from "express";
 import { executeRemoteCommands, suspendChess } from "../suspend-chess.js";
+import { parseChessCommand } from "../lib/commands.js";
 import dotenv from "dotenv";
 
 // Load environment variables
@@ -60,42 +61,6 @@ app.post("/ntfy-webhook", async (req, res) => {
     });
   }
 });
-
-// Parse the message to determine the action
-function parseChessCommand(message, tags = []) {
-  const messageLower = message?.toLowerCase() || "";
-  const tagsList = tags.map((t) => t.toLowerCase());
-
-  // Check tags first
-  if (tagsList.includes("block") || tagsList.includes("suspend")) {
-    return true;
-  }
-  if (tagsList.includes("allow") || tagsList.includes("unblock")) {
-    return false;
-  }
-
-  // Check message content
-  if (
-    messageLower.includes("block") ||
-    messageLower.includes("suspend") ||
-    messageLower.includes("stop chess") ||
-    messageLower.includes("disable chess")
-  ) {
-    return true;
-  }
-
-  if (
-    messageLower.includes("allow") ||
-    messageLower.includes("unblock") ||
-    messageLower.includes("enable chess") ||
-    messageLower.includes("start chess")
-  ) {
-    return false;
-  }
-
-  // Return null if no valid command found
-  return null;
-}
 
 // Start the server
 app.listen(PORT, () => {

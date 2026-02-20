@@ -10,7 +10,9 @@
     "suspend": "node suspend-chess.js",
     "ntfy-subscriber": "node ntfy/ntfy-subscriber.js",
     "ntfy-listener": "node ntfy/ntfy-listener.js",
-    "test": "node ntfy/test-ntfy.js",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
+    "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
+    "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
     "webapp": "node chess-control-webapp/server.js"
   },
   "keywords": [
@@ -33,5 +35,14 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "moduleNameMapper": {},
+    "testMatch": ["**/__tests__/**/*.test.js"]
   }
 }

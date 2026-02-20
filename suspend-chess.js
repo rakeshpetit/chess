@@ -1,6 +1,12 @@
-import { Client } from "ssh2";
+import {
+  createSSHClient,
+  executeSSHCommand,
+  buildSudoCommand,
+  buildHostsUploadCommand,
+  buildBrowserKillCommand,
+} from "./lib/ssh.js";
+import { readLocalHostsFile as readHostsFile } from "./lib/file-utils.js";
 import readline from "readline";
-import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
 
@@ -158,114 +164,53 @@ function logSuccess(message) {
 }
 
 /**
- * Escapes single quotes for shell commands
- * @param {string} content - Content to escape
- * @returns {string} Escaped content
+ * Logs SSH command output with emoji prefix
+ * @param {string} output - Command output to log
  */
-function escapeForShell(content) {
-  return content.replace(/'/g, "'\\''");
-}
-
-// ============================================================================
-// SSH CONNECTION FUNCTIONS
-// ============================================================================
-
-/**
- * Promisifies SSH command execution
- * @param {Client} conn - SSH client connection
- * @param {string} command - Command to execute
- * @returns {Promise<{code: number, output: string}>} Command result
- */
-function executeSSHCommand(conn, command) {
-  return new Promise((resolve, reject) => {
-    conn.exec(command, (err, stream) => {
-      if (err) {
-        return reject(err);
-      }
-
-      let output = "";
-
-      stream.on("data", (data) => {
-        output += data.toString();
-        log(EMOJI.WRITE, `Command output: ${data.toString().trim()}`);
-      });
-
-      stream.on("close", (code) => {
-        resolve({ code, output });
-      });
-    });
-  });
+function logSSHOutput(output) {
+  log(EMOJI.WRITE, `Command output: ${output.trim()}`);
 }
 
 /**
- * Kills browser processes on the remote machine
+ * Creates a wrapped SSH command executor with logging
  * @param {Client} conn - SSH client connection
- * @param {string} browserName - Name of the browser process to kill
- * @returns {Promise<void>}
+ * @returns {Function} Command executor function
  */
-async function killBrowserProcess(conn, browserName) {
-  try {
-    const { code } = await executeSSHCommand(conn, `pkill ${browserName}`);
-
-    if (code === PKILL_SUCCESS_CODE) {
-      logSuccess(`${browserName} processes killed successfully`);
-    } else if (code === PKILL_NO_PROCESSES_CODE) {
-      log(EMOJI.INFO, `No ${browserName} processes found to kill`);
-    } else {
-      logError(`Failed to kill ${browserName}, exit code: ${code}`);
+function createLoggedCommandExecutor(conn) {
+  return async (command) => {
+    const result = await executeSSHCommand(conn, command);
+    if (result.output) {
+      logSSHOutput(result.output);
     }
-  } catch (error) {
-    logError(`Error killing ${browserName}: ${error.message}`);
-    throw error;
-  }
+    return result;
+  };
 }
 
-/**
- * Kills all configured browser processes
- * @param {Client} conn - SSH client connection
- * @returns {Promise<void>}
- */
-async function killAllBrowsers(conn) {
-  for (const browser of BROWSERS_TO_KILL) {
-    await killBrowserProcess(conn, browser);
-  }
-}
+// ============================================================================
+// FILE OPERATIONS
+// ============================================================================
 
 /**
- * Uploads the hosts file to the remote server
- * @param {Client} conn - SSH client connection
- * @param {string} hostsContent - Content of the hosts file
- * @returns {Promise<void>}
- */
-async function uploadHostsFile(conn, hostsContent) {
-  const escapedContent = escapeForShell(hostsContent);
-  const uploadCommand = `echo '${SSH_CONFIG.password}' | sudo -S bash -c "cp ${REMOTE_HOSTS_PATH} ${REMOTE_HOSTS_BACKUP_PATH} && echo '${escapedContent}' > ${REMOTE_HOSTS_PATH}"`;
-
-  const { code } = await executeSSHCommand(conn, uploadCommand);
-
-  if (code !== 0) {
-    throw new Error(`Upload failed with exit code ${code}`);
-  }
-
-  logSuccess("Hosts file updated successfully");
-}
-
-/**
- * Reads the local hosts file
+ * Reads the appropriate local hosts file based on blocking mode
  * @param {boolean} isBlocking - Whether to use the blocking hosts file
  * @returns {Promise<string>} Content of the hosts file
  */
-function readLocalHostsFile(isBlocking) {
+async function readLocalHostsFile(isBlocking) {
+  const config = {
+    configDir: path.join(process.cwd(), "config"),
+    blockedFileName: HOSTS_FILE_NAMES.BLOCKED,
+    allowedFileName: HOSTS_FILE_NAMES.ALLOWED,
+  };
+
   const hostsFileName = isBlocking
     ? HOSTS_FILE_NAMES.BLOCKED
     : HOSTS_FILE_NAMES.ALLOWED;
-  const localHostsPath = path.join(process.cwd(), "config", hostsFileName);
 
   log(EMOJI.FILE, `Using hosts file: ${hostsFileName}`);
-  log(EMOJI.FOLDER, `Local path: ${localHostsPath}`);
+  log(EMOJI.FOLDER, `Local path: ${path.join(config.configDir, hostsFileName)}`);
 
   try {
-    const hostsContent = fs.readFileSync(localHostsPath, "utf8");
+    const hostsContent = await readHostsFile(config, isBlocking);
     logSuccess(`Read local hosts file (${hostsContent.length} characters)`);
     return hostsContent;
   } catch (error) {
@@ -273,6 +218,25 @@ function readLocalHostsFile(isBlocking) {
     throw error;
   }
 }
+
+/**
+ * Builds the full hosts file upload command with sudo
+ * @param {string} password - sudo password
+ * @param {string} hostsContent - Content to write
+ * @returns {string} Complete sudo-enabled upload command
+ */
+function buildCompleteUploadCommand(password, hostsContent) {
+  const uploadPart = buildHostsUploadCommand(
+    REMOTE_HOSTS_PATH,
+    REMOTE_HOSTS_BACKUP_PATH,
+    hostsContent
+  );
+  return buildSudoCommand(password, uploadPart);
+}
+
+// ============================================================================
+// SSH CONNECTION FUNCTIONS
+// ============================================================================
 
 /**
  * Sets up SSH connection event handlers
@@ -327,18 +291,76 @@ async function establishSSHConnection(conn) {
 }
 
 /**
+ * Kills browser processes on the remote machine
+ * @param {Client} conn - SSH client connection
+ * @param {string} browserName - Name of the browser process to kill
+ * @param {Function} executeCommand - Command executor function
+ * @returns {Promise<void>}
+ */
+async function killBrowserProcess(conn, browserName, executeCommand) {
+  try {
+    const command = buildBrowserKillCommand([browserName]);
+    const { code } = await executeCommand(command);
+
+    if (code === PKILL_SUCCESS_CODE) {
+      logSuccess(`${browserName} processes killed successfully`);
+    } else if (code === PKILL_NO_PROCESSES_CODE) {
+      log(EMOJI.INFO, `No ${browserName} processes found to kill`);
+    } else {
+      logError(`Failed to kill ${browserName}, exit code: ${code}`);
+    }
+  } catch (error) {
+    logError(`Error killing ${browserName}: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Kills all configured browser processes
+ * @param {Client} conn - SSH client connection
+ * @param {Function} executeCommand - Command executor function
+ * @returns {Promise<void>}
+ */
+async function killAllBrowsers(conn, executeCommand) {
+  for (const browser of BROWSERS_TO_KILL) {
+    await killBrowserProcess(conn, browser, executeCommand);
+  }
+}
+
+/**
+ * Uploads the hosts file to the remote server using the modular utilities
+ * @param {Client} conn - SSH client connection
+ * @param {string} hostsContent - Content of the hosts file
+ * @param {Function} executeCommand - Command executor function
+ * @returns {Promise<void>}
+ */
+async function uploadHostsFile(conn, hostsContent, executeCommand) {
+  const uploadCommand = buildCompleteUploadCommand(SSH_CONFIG.password, hostsContent);
+  const { code } = await executeCommand(uploadCommand);
+
+  if (code !== 0) {
+    throw new Error(`Upload failed with exit code ${code}`);
+  }
+
+  logSuccess("Hosts file updated successfully");
+}
+
+/**
  * Executes all remote commands via SSH
  * @returns {Promise<void>}
  */
 async function executeRemoteCommands() {
-  const conn = new Client();
+  const conn = createSSHClient();
 
   try {
     await establishSSHConnection(conn);
 
-    const hostsContent = readLocalHostsFile(SSH_CONFIG.suspendChess);
-    await uploadHostsFile(conn, hostsContent);
-    await killAllBrowsers(conn);
+    // Create a logged command executor
+    const executeCommand = createLoggedCommandExecutor(conn);
+
+    const hostsContent = await readLocalHostsFile(SSH_CONFIG.suspendChess);
+    await uploadHostsFile(conn, hostsContent, executeCommand);
+    await killAllBrowsers(conn, executeCommand);
 
     log(EMOJI.PARTY, "All commands executed successfully!");
   } finally {

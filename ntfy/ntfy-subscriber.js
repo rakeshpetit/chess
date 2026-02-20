@@ -1,4 +1,5 @@
 import { suspendChess } from "../suspend-chess.js";
+import { parseChessCommand } from "../lib/commands.js";
 import dotenv from "dotenv";
 
 // Load environment variables
@@ -107,10 +108,7 @@ async function handleNotification(notification) {
   console.log(`  Tags: ${notification.tags?.join(", ") || "none"}`);
 
   // Parse the command
-  const shouldBlock = parseChessCommand(
-    notification.message,
-    notification.tags,
-  );
+  const shouldBlock = parseChessCommand(notification.message, notification.tags);
 
   if (shouldBlock === null) {
     console.log("⚠️  Message not recognized as a chess command");
@@ -131,42 +129,6 @@ async function handleNotification(notification) {
   }
 
   console.log("\n📋 Waiting for next notification...\n");
-}
-
-// Parse the message to determine the action
-function parseChessCommand(message, tags = []) {
-  const messageLower = message?.toLowerCase() || "";
-  const tagsList = (tags || []).map((t) => t.toLowerCase());
-
-  // Check tags first
-  if (tagsList.includes("block") || tagsList.includes("suspend")) {
-    return true;
-  }
-  if (tagsList.includes("allow") || tagsList.includes("unblock")) {
-    return false;
-  }
-
-  // Check message content
-  if (
-    messageLower.includes("block") ||
-    messageLower.includes("suspend") ||
-    messageLower.includes("stop chess") ||
-    messageLower.includes("disable chess")
-  ) {
-    return true;
-  }
-
-  if (
-    messageLower.includes("allow") ||
-    messageLower.includes("unblock") ||
-    messageLower.includes("enable chess") ||
-    messageLower.includes("start chess")
-  ) {
-    return false;
-  }
-
-  // Return null if no valid command found
-  return null;
 }
 
 // Handle graceful shutdown
