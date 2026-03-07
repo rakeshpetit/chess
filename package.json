@@ -13,7 +13,10 @@
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
-    "webapp": "node chess-control-webapp/server.js"
+    "webapp": "node chess-control-webapp/server.js",
+    "webapp:windows": "node chess-control-webapp/server.js",
+    "setup:windows": "copy env.example .env",
+    "setup:unix": "cp env.example .env"
   },
   "keywords": [
     "chess",

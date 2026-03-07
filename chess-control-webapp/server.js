@@ -1,12 +1,13 @@
 import express from "express";
 import cors from "cors";
 import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { dirname, join, normalize } from "path";
 import { spawn } from "child_process";
 import { exec } from "child_process";
 import { promisify } from "util";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
+import path from "path";
 
 // Load environment variables
 dotenv.config();
@@ -60,12 +61,17 @@ let lastAction = {
 // Helper function to run suspend-chess.js
 function runSuspendChess(action) {
   return new Promise((resolve, reject) => {
-    const scriptPath = join(__dirname, "..", "suspend-chess.js");
+    // Use path.normalize for Windows compatibility
+    const scriptPath = normalize(join(__dirname, "..", "suspend-chess.js"));
     console.log(`📋 Executing: node ${scriptPath} ${action}`);
 
     // Using node to run the ES module
-    const child = spawn("node", [scriptPath, action], {
-      cwd: join(__dirname, ".."),
+    // On Windows, use 'node.exe' explicitly for better compatibility
+    const nodeCmd = process.platform === "win32" ? "node.exe" : "node";
+    const child = spawn(nodeCmd, [scriptPath, action], {
+      cwd: normalize(join(__dirname, "..")),
+      // Don't use shell option with arguments to avoid security vulnerability
+      // Windows can handle paths with forward slashes in Node.js spawn
     });
 
     let stdout = "";
@@ -86,18 +92,27 @@ function runSuspendChess(action) {
     });
 
     child.on("close", (code) => {
+      console.log(`📊 Script closed with exit code: ${code}`);
       if (code === 0) {
         console.log(`✅ Script executed successfully (exit code: ${code})`);
         resolve({ stdout, stderr, code });
       } else {
         console.error(`❌ Script execution failed (exit code: ${code})`);
+        console.error(`📝 Stdout: ${stdout}`);
+        console.error(`📝 Stderr: ${stderr}`);
         reject({ stdout, stderr, code });
       }
     });
 
     child.on("error", (error) => {
       console.error(`💥 Failed to spawn script: ${error.message}`);
-      reject({ error: error.message, code: -1 });
+      console.error(`💥 Error code: ${error.code}`);
+      console.error(`💥 Error syscall: ${error.syscall}`);
+      reject({
+        error: error.message,
+        errorCode: error.code,
+        syscall: error.syscall,
+      });
     });
   });
 }
@@ -251,14 +266,23 @@ async function pingHost(host) {
     }
 
     // Use ping command with 1 packet, 2 second timeout
-    const command =
-      process.platform === "win32"
-        ? `ping -n 1 -w 2000 ${host}`
-        : `ping -c 1 -W 2 ${host}`;
+    // Windows uses different flags than Unix/Linux/macOS
+    let command;
+    if (process.platform === "win32") {
+      // Windows: -n = count, -w = timeout in milliseconds
+      command = `ping -n 1 -w 2000 ${host}`;
+    } else {
+      // Unix/Linux/macOS: -c = count, -W = timeout in seconds
+      command = `ping -c 1 -W 2 ${host}`;
+    }
 
-    await execAsync(command);
+    // On Windows, exec may need shell:true for built-in commands
+    const options = process.platform === "win32" ? { shell: true } : {};
+    await execAsync(command, options);
     return true;
   } catch (error) {
+    // Log error for debugging (silenced in production if needed)
+    console.debug(`Ping failed for ${host}: ${error.message}`);
     return false;
   }
 }

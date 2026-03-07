@@ -8,6 +8,7 @@ import {
 import { readLocalHostsFile as readHostsFile } from "./lib/file-utils.js";
 import readline from "readline";
 import path from "path";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
 // Load environment variables
@@ -101,9 +102,20 @@ function promptPassword(prompt) {
 
 /**
  * Clears the current line in the terminal
+ * Windows-compatible version using platform-specific escape sequences
  */
 function clearLine() {
-  process.stdout.write("\r\x1b[K");
+  // Use platform-specific clear sequence
+  // Windows 10+ supports ANSI codes, but older versions need different handling
+  if (process.platform === "win32") {
+    // For Windows: clear line by rewriting spaces
+    process.stdout.write(
+      "\r" + " ".repeat(process.stdout.columns || 80) + "\r",
+    );
+  } else {
+    // Unix/Linux/macOS: use ANSI escape code
+    process.stdout.write("\r\x1b[K");
+  }
 }
 
 /**
@@ -127,24 +139,35 @@ function formatTime(seconds) {
 
 /**
  * Creates a progress bar string
+ * Windows-compatible version using ASCII characters for broader compatibility
  * @param {number} progress - Progress percentage (0-100)
  * @param {number} width - Width of the progress bar in characters
  * @returns {string} Progress bar string
  */
 function createProgressBar(progress, width = PROGRESS_BAR_WIDTH) {
   const filledWidth = Math.floor(width * (progress / 100));
-  const filled = "█".repeat(filledWidth);
-  const empty = "░".repeat(width - filledWidth);
+  // Use ASCII characters for Windows compatibility
+  // Some Windows consoles don't render Unicode block characters properly
+  const filledChar = process.platform === "win32" ? "=" : "█";
+  const emptyChar = process.platform === "win32" ? "-" : "░";
+  const filled = filledChar.repeat(filledWidth);
+  const empty = emptyChar.repeat(width - filledWidth);
   return `${filled}${empty}`;
 }
 
 /**
  * Logs a message with an emoji prefix
+ * Windows-compatible version that handles emoji support detection
  * @param {string} emoji - Emoji to prefix the message
  * @param {string} message - Message to log
  */
 function log(emoji, message) {
-  console.log(`${emoji} ${message}`);
+  // Windows CMD may not support emojis, use ASCII fallback
+  const safeEmoji =
+    process.platform === "win32" && !process.env.WT_SESSION
+      ? emoji.replace(/[^\w\s.,!?-]/g, "") || "[*]"
+      : emoji;
+  console.log(`${safeEmoji} ${message}`);
 }
 
 /**
@@ -207,7 +230,10 @@ async function readLocalHostsFile(isBlocking) {
     : HOSTS_FILE_NAMES.ALLOWED;
 
   log(EMOJI.FILE, `Using hosts file: ${hostsFileName}`);
-  log(EMOJI.FOLDER, `Local path: ${path.join(config.configDir, hostsFileName)}`);
+  log(
+    EMOJI.FOLDER,
+    `Local path: ${path.join(config.configDir, hostsFileName)}`,
+  );
 
   try {
     const hostsContent = await readHostsFile(config, isBlocking);
@@ -229,7 +255,7 @@ function buildCompleteUploadCommand(password, hostsContent) {
   const uploadPart = buildHostsUploadCommand(
     REMOTE_HOSTS_PATH,
     REMOTE_HOSTS_BACKUP_PATH,
-    hostsContent
+    hostsContent,
   );
   return buildSudoCommand(password, uploadPart);
 }
@@ -335,7 +361,10 @@ async function killAllBrowsers(conn, executeCommand) {
  * @returns {Promise<void>}
  */
 async function uploadHostsFile(conn, hostsContent, executeCommand) {
-  const uploadCommand = buildCompleteUploadCommand(SSH_CONFIG.password, hostsContent);
+  const uploadCommand = buildCompleteUploadCommand(
+    SSH_CONFIG.password,
+    hostsContent,
+  );
   const { code } = await executeCommand(uploadCommand);
 
   if (code !== 0) {
@@ -578,6 +607,20 @@ async function main() {
 }
 
 // Run the script if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Windows-compatible check using URL comparison
+function isMainModule() {
+  // Check if this file is being run directly (not imported)
+  const __filename = fileURLToPath(import.meta.url);
+  const firstArg = process.argv[1];
+
+  // On Windows, process.argv[1] might have backslashes, so normalize both paths
+  const argPath = firstArg ? firstArg.replace(/\\/g, "/") : "";
+  const scriptPath = __filename.replace(/\\/g, "/");
+
+  // Check if the script path matches the first argument
+  return argPath.endsWith(scriptPath) || argPath.endsWith("suspend-chess.js");
+}
+
+if (isMainModule()) {
   main();
 }
