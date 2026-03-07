@@ -3,7 +3,10 @@ import cors from "cors";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { spawn } from "child_process";
+import { exec } from "child_process";
+import { promisify } from "util";
 import dotenv from "dotenv";
+import fetch from "node-fetch";
 
 // Load environment variables
 dotenv.config();
@@ -13,6 +16,25 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.WEBAPP_PORT || process.env.PORT || 3000;
+
+// Promisify exec for ping command
+const execAsync = promisify(exec);
+
+// Host monitoring configuration
+const MONITOR_CONFIG = {
+  sshHost: process.env.SSH_HOST || "192.168.0.10",
+  checkIntervalMinutes: 10,
+  ntfyServer: process.env.NTFY_SERVER || "https://ntfy.sh",
+  ntfyTopic: process.env.NTFY_TOPIC || "chess-control",
+};
+
+// Host status tracking
+let hostStatus = {
+  isUp: null,
+  lastCheck: null,
+  lastChange: null,
+  consecutiveFailures: 0,
+};
 
 // Middleware
 app.use(cors());
@@ -105,6 +127,9 @@ app.post("/api/block", async (req, res) => {
       timestamp: new Date().toISOString(),
     };
 
+    // Send ntfy notification for successful block action
+    await sendActionNtfyNotification("block");
+
     console.log(`✅ BLOCK request completed successfully`);
     console.log(`${"=".repeat(60)}\n`);
 
@@ -159,6 +184,9 @@ app.post("/api/allow", async (req, res) => {
       timestamp: new Date().toISOString(),
     };
 
+    // Send ntfy notification for successful allow action
+    await sendActionNtfyNotification("allow");
+
     console.log(`✅ ALLOW request completed successfully`);
     console.log(`${"=".repeat(60)}\n`);
 
@@ -192,6 +220,210 @@ app.post("/api/allow", async (req, res) => {
 app.get("/api/status", (req, res) => {
   res.json(lastAction);
 });
+
+// API endpoint to get host monitoring status
+app.get("/api/host-status", (req, res) => {
+  res.json({
+    ...hostStatus,
+    config: {
+      host: MONITOR_CONFIG.sshHost,
+      checkIntervalMinutes: MONITOR_CONFIG.checkIntervalMinutes,
+    },
+  });
+});
+
+// ============================================================================
+// HOST MONITORING FUNCTIONS
+// ============================================================================
+
+/**
+ * Ping a host to check if it's up
+ * @param {string} host - Hostname or IP to ping
+ * @returns {Promise<boolean>} True if host is up, false otherwise
+ */
+async function pingHost(host) {
+  try {
+    // Validate host to prevent command injection
+    // Only allow alphanumeric characters, dots, and hyphens
+    if (!/^[a-zA-Z0-9.-]+$/.test(host)) {
+      console.error(`❌ Invalid host format: ${host}`);
+      return false;
+    }
+
+    // Use ping command with 1 packet, 2 second timeout
+    const command =
+      process.platform === "win32"
+        ? `ping -n 1 -w 2000 ${host}`
+        : `ping -c 1 -W 2 ${host}`;
+
+    await execAsync(command);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Send notification via ntfy when host status changes or on server start
+ * @param {boolean} isUp - Whether the host is up
+ * @param {number} consecutiveFailures - Number of consecutive ping failures
+ * @param {boolean} isStartup - Whether this is a startup notification
+ */
+async function sendNtfyNotification(
+  isUp,
+  consecutiveFailures,
+  isStartup = false,
+) {
+  try {
+    const status = isUp ? "ONLINE" : "OFFLINE";
+    const emoji = isUp ? "✅" : "🚫";
+
+    let title, message, tags;
+
+    if (isStartup) {
+      title = `🚀 Chess Control Monitor Started`;
+      message = `${emoji} Host monitoring started for ${MONITOR_CONFIG.sshHost}. Initial status: ${status}`;
+      tags = ["rocket", "host", "monitoring", "startup"];
+    } else {
+      title = `Host ${MONITOR_CONFIG.sshHost} is ${status}`;
+      message = isUp
+        ? `${emoji} Host ${MONITOR_CONFIG.sshHost} has come back online.`
+        : `${emoji} Host ${MONITOR_CONFIG.sshHost} is offline. Consecutive failures: ${consecutiveFailures}`;
+      tags = [isUp ? "white_check_mark" : "x", "host", "monitoring"];
+    }
+
+    const url = `${MONITOR_CONFIG.ntfyServer}/${MONITOR_CONFIG.ntfyTopic}`;
+
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: title,
+        message: message,
+        tags: tags,
+        priority: isStartup ? 2 : isUp ? 2 : 4,
+      }),
+    });
+
+    console.log(`📬 ntfy notification sent: ${title}`);
+  } catch (error) {
+    console.error(`❌ Failed to send ntfy notification: ${error.message}`);
+  }
+}
+
+/**
+ * Send notification via ntfy for block/allow actions
+ * @param {string} action - The action performed ('block' or 'allow')
+ */
+async function sendActionNtfyNotification(action) {
+  try {
+    const emoji = action === "block" ? "🚫" : "✅";
+    const actionText = action === "block" ? "Blocked" : "Allowed";
+    const title = `${emoji} Chess Sites ${actionText}`;
+    const message = `Chess sites have been ${action.toLowerCase()} via Chess Control Web App`;
+    const tags = [
+      action === "block" ? "no_entry" : "white_check_mark",
+      "chess",
+      "control",
+    ];
+
+    const url = `${MONITOR_CONFIG.ntfyServer}/${MONITOR_CONFIG.ntfyTopic}`;
+
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: title,
+        message: message,
+        tags: tags,
+        priority: 3,
+      }),
+    });
+
+    console.log(`📬 ntfy notification sent: ${title}`);
+  } catch (error) {
+    console.error(`❌ Failed to send ntfy notification: ${error.message}`);
+  }
+}
+
+/**
+ * Check host status and handle state changes
+ */
+async function checkHostStatus() {
+  const timestamp = new Date().toISOString();
+  const wasUp = hostStatus.isUp;
+
+  console.log(`\n🔍 [${timestamp}] Pinging ${MONITOR_CONFIG.sshHost}...`);
+
+  const isUp = await pingHost(MONITOR_CONFIG.sshHost);
+
+  hostStatus.lastCheck = timestamp;
+  hostStatus.isUp = isUp;
+
+  if (!isUp) {
+    hostStatus.consecutiveFailures++;
+  } else {
+    hostStatus.consecutiveFailures = 0;
+  }
+
+  // Detect status change (after initial check)
+  if (wasUp !== null && wasUp !== isUp) {
+    hostStatus.lastChange = timestamp;
+
+    if (isUp) {
+      console.log(
+        `💚 [${timestamp}] Host ${MONITOR_CONFIG.sshHost} came back ONLINE`,
+      );
+    } else {
+      console.log(
+        `❤️ [${timestamp}] Host ${MONITOR_CONFIG.sshHost} went OFFLINE`,
+      );
+    }
+
+    // Send ntfy notification on status change
+    await sendNtfyNotification(isUp, hostStatus.consecutiveFailures);
+  } else if (wasUp === null) {
+    // Initial check
+    console.log(
+      `📊 [${timestamp}] Initial host status: ${isUp ? "ONLINE" : "OFFLINE"}`,
+    );
+    hostStatus.lastChange = timestamp;
+
+    // Send startup notification
+    await sendNtfyNotification(isUp, hostStatus.consecutiveFailures, true);
+  } else {
+    // No change
+    const statusStr = isUp ? "ONLINE" : "OFFLINE";
+    console.log(`📊 [${timestamp}] Host status unchanged: ${statusStr}`);
+  }
+}
+
+/**
+ * Start the host monitoring interval
+ */
+async function startHostMonitoring() {
+  const intervalMs = MONITOR_CONFIG.checkIntervalMinutes * 60 * 1000;
+
+  console.log(`\n🔍 Host monitoring started:`);
+  console.log(`   Host: ${MONITOR_CONFIG.sshHost}`);
+  console.log(
+    `   Check interval: ${MONITOR_CONFIG.checkIntervalMinutes} minutes`,
+  );
+  console.log(`   ntfy topic: ${MONITOR_CONFIG.ntfyTopic}\n`);
+
+  // Run initial check immediately
+  await checkHostStatus();
+
+  // Then run at regular intervals
+  setInterval(checkHostStatus, intervalMs);
+}
+
+// Start host monitoring when server starts
+startHostMonitoring();
 
 // Serve the main page
 app.get("/", (req, res) => {
