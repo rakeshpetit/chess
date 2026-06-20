@@ -3,6 +3,7 @@ let isProcessing = false;
 // Load status on page load
 document.addEventListener("DOMContentLoaded", () => {
   loadStatus();
+  loadHostConfig();
   // Poll for status updates every 2 seconds
   setInterval(loadStatus, 2000);
 });
@@ -80,6 +81,52 @@ function hideMessage() {
 function setButtonsDisabled(disabled) {
   document.getElementById("block-btn").disabled = disabled;
   document.getElementById("allow-btn").disabled = disabled;
+}
+
+async function loadHostConfig() {
+  try {
+    const response = await fetch("/api/host-status");
+    const data = await response.json();
+    const input = document.getElementById("ssh-host-input");
+    if (data.config && data.config.host) {
+      input.value = data.config.host;
+    }
+  } catch (error) {
+    console.error("Failed to load host config:", error);
+  }
+}
+
+async function saveHost() {
+  const input = document.getElementById("ssh-host-input");
+  const btn = document.getElementById("save-host-btn");
+  const host = input.value.trim();
+
+  if (!host) return;
+
+  btn.disabled = true;
+  btn.textContent = "Saving...";
+
+  try {
+    const response = await fetch("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sshHost: host }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showMessage(`Host updated to ${data.sshHost}`, "success");
+    } else {
+      showMessage(data.message || "Failed to update host", "error");
+    }
+  } catch (error) {
+    showMessage("Failed to connect to server", "error");
+    console.error("Error:", error);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save";
+  }
 }
 
 async function blockChess() {

@@ -1,12 +1,12 @@
-127.0.0.1 localhost
-127.0.1.1 rakesh-laptop
+127.0.0.1       localhost
+127.0.1.1       rakesh-lenovo
 
 # The following lines are desirable for IPv6 capable hosts
 ::1     ip6-localhost ip6-loopback
 fe00::0 ip6-localnet
 ff00::0 ip6-mcastprefix
 ff02::1 ip6-allnodes
-ff02::2 ip6-allrouter
+ff02::2 ip6-allrouters
 
 # 127.0.0.1 lichess.org
 # 127.0.0.1 chess.com
@@ -16,3 +16,5 @@ ff02::2 ip6-allrouter
 # 127.0.0.1 www.lichess.org
 # 127.0.0.1 www.chess.com
 # 127.0.0.1 www.youtube.com
+# 127.0.0.1 www.flightradar24.com
+# 127.0.0.1 flightradar24.com

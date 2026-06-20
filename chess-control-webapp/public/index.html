@@ -40,6 +40,22 @@
             </div>
 
             <div id="message" class="message hidden"></div>
+
+            <div class="settings-card">
+                <h2>Host Settings</h2>
+                <div class="settings-row">
+                    <label for="ssh-host-input">SSH Host IP</label>
+                    <div class="settings-input-group">
+                        <input
+                            type="text"
+                            id="ssh-host-input"
+                            placeholder="192.168.0.10"
+                            pattern="[a-zA-Z0-9.\-]+"
+                        />
+                        <button id="save-host-btn" class="btn-save" onclick="saveHost()">Save</button>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <footer>

@@ -5,6 +5,7 @@ import { dirname, join, normalize } from "path";
 import { spawn } from "child_process";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { readFile, writeFile } from "fs/promises";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import path from "path";
@@ -245,6 +246,32 @@ app.get("/api/host-status", (req, res) => {
       checkIntervalMinutes: MONITOR_CONFIG.checkIntervalMinutes,
     },
   });
+});
+
+// API endpoint to update SSH host at runtime
+app.put("/api/config", async (req, res) => {
+  const { sshHost } = req.body;
+
+  if (!sshHost || !/^[a-zA-Z0-9.-]+$/.test(sshHost)) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid host format" });
+  }
+
+  MONITOR_CONFIG.sshHost = sshHost;
+  process.env.SSH_HOST = sshHost;
+
+  try {
+    const envPath = normalize(join(__dirname, "..", ".env"));
+    const content = await readFile(envPath, "utf8");
+    const updated = content.replace(/^SSH_HOST=.*/m, `SSH_HOST=${sshHost}`);
+    await writeFile(envPath, updated, "utf8");
+  } catch (err) {
+    console.error(`⚠️ Could not persist SSH_HOST to .env: ${err.message}`);
+  }
+
+  console.log(`🔧 SSH_HOST updated to ${sshHost}`);
+  res.json({ success: true, sshHost });
 });
 
 // ============================================================================

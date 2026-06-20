@@ -208,6 +208,71 @@ header h1 {
     border: 1px solid #f5c6cb;
 }
 
+.settings-card {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.settings-card h2 {
+    font-size: 1.1rem;
+    color: #555;
+    margin-bottom: 15px;
+}
+
+.settings-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.settings-row label {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
+}
+
+.settings-input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.settings-input-group input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.settings-input-group input:focus {
+    border-color: #667eea;
+}
+
+.btn-save {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.btn-save:hover {
+    opacity: 0.9;
+}
+
+.btn-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 footer {
     text-align: center;
     margin-top: 30px;
