@@ -13,8 +13,8 @@
     "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
     "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
     "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
-    "webapp": "node chess-control-webapp/server.js",
-    "webapp:windows": "node chess-control-webapp/server.js",
+    "webapp": "concurrently \"node ntfy/ntfy-subscriber.js\" \"node chess-control-webapp/server.js\"",
+    "webapp:windows": "concurrently \"node ntfy/ntfy-subscriber.js\" \"node chess-control-webapp/server.js\"",
     "setup:windows": "copy env.example .env",
     "setup:unix": "cp env.example .env"
   },
@@ -41,6 +41,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
+    "concurrently": "^9.0.0",
     "jest": "^29.7.0"
   },
   "jest": {

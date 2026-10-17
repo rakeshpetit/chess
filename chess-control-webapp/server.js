@@ -340,7 +340,9 @@ async function sendNtfyNotification(
       message = isUp
         ? `${emoji} Host ${MONITOR_CONFIG.sshHost} has come back online.`
         : `${emoji} Host ${MONITOR_CONFIG.sshHost} is offline. Consecutive failures: ${consecutiveFailures}`;
-      tags = [isUp ? "white_check_mark" : "x", "host", "monitoring"];
+      tags = isUp
+        ? ["white_check_mark", "host", "monitoring", "block"]
+        : ["x", "host", "monitoring"];
     }
 
     const url = `${MONITOR_CONFIG.ntfyServer}/${MONITOR_CONFIG.ntfyTopic}`;
